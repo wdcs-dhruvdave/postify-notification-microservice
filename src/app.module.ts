@@ -12,7 +12,7 @@ import { MongooseModule } from '@nestjs/mongoose';
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService): { uri: string } => {
-        const uri = configService.get('MONGO_URI');
+        const uri = configService.get<string>('MONGO_URI');
         if (!uri) {
           throw new Error('MONGO_URI is not defined in environment variables');
         }
