@@ -12,7 +12,15 @@ export class NotificationsService {
   ) {}
 
   async createNotification(notificationDto: CreateNotificationDto) {
-    const notification = await this.notificationModel.create(notificationDto);
+    console.log('Creating notification with data:', notificationDto);
+    const notification = await this.notificationModel
+      .create(notificationDto)
+      .then(() => {
+        console.log('Notification created:', notificationDto);
+      })
+      .catch((error) => {
+        console.error('Error creating notification:', error);
+      });
     return notification;
   }
 
