@@ -13,4 +13,4 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`🚀 Notification service is running on: ${await app.getUrl()}`);
 }
-bootstrap();
+void bootstrap();

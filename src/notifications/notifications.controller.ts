@@ -9,7 +9,7 @@ export class NotificationsController {
 
   @Get()
   findAll(@UserId() userId: string) {
-    return this.notificationsService.findAllforUser(userId);
+    return this.notificationsService.findAllForUser(userId);
   }
 
   @Post('read')
@@ -19,6 +19,6 @@ export class NotificationsController {
 
   @Post()
   createNotification(@Body() body: CreateNotificationDto) {
-    return this.notificationsService.createNotification(body);
+    return this.notificationsService.createAndPush(body);
   }
 }
