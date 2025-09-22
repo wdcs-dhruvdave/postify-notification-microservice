@@ -11,6 +11,8 @@ async function bootstrap() {
   const port = configService.get<number>('PORT') || 3002;
 
   await app.listen(port);
-  console.log(`🚀 Notification service is running on: ${await app.getUrl()}`);
+  console.log(
+    `🚀 Notification And Chat service is running on: ${await app.getUrl()}`,
+  );
 }
 void bootstrap();
