@@ -12,7 +12,6 @@ import * as jwt from 'jsonwebtoken';
 import { ConfigService } from '@nestjs/config';
 import { ChatService } from './chat.service';
 import { CreateMessageDto } from './dto/create-message.dto';
-import Conversation from '../models/conversation.model';
 import { Logger } from '@nestjs/common';
 
 @WebSocketGateway({
@@ -94,6 +93,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @SubscribeMessage('switch_conversation')
+  handleSwitchConversation(
+    @MessageBody()
+    data: { oldConversationId?: string; newConversationId?: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    if (data.oldConversationId) {
+      void client.leave(data.oldConversationId);
+      this.logger.log(
+        `Socket ${client.id} left conversation room ${data.oldConversationId}`,
+      );
+    }
+    if (data.newConversationId) {
+      void client.join(data.newConversationId);
+      this.logger.log(
+        `Socket ${client.id} joined conversation room ${data.newConversationId}`,
+      );
+    }
+  }
+
   @SubscribeMessage('leave_conversation')
   handleLeaveRoom(
     @MessageBody() conversationId: string,
@@ -111,23 +130,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     this.logger.log(`[send_message] Received: ${JSON.stringify(data)}`);
     try {
+      this.logger.log(
+        `Server properties: ${Object.keys(this.server).join(', ')}`,
+      );
+      this.logger.log(`Has adapter: ${!!this.server.adapter}`);
+      this.logger.log(`Has sockets: ${!!this.server.sockets}`);
+
       const newMessage = await this.chatService.createMessage(data);
       this.logger.log(
         `[send_message] Message saved to DB: ${JSON.stringify(newMessage.toJSON())}`,
       );
 
-      let conversation: Conversation | null = null;
-      try {
-        conversation = await this.chatService.getConversationWithParticipants(
+      const conversation =
+        await this.chatService.getConversationWithParticipants(
           data.conversationId,
         );
-      } catch (err) {
-        this.logger.error(
-          `[send_message] Error fetching conversation:`,
-          err instanceof Error ? err.stack : String(err),
-        );
-        conversation = null;
-      }
 
       const messageToSend: Record<string, unknown> = {
         ...newMessage.toJSON(),
@@ -141,26 +158,28 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         .to(data.conversationId)
         .emit('receive_message', messageToSend);
 
-      if (conversation) {
-        const notifyUsers = conversation.participants ?? [];
+      if (conversation && conversation.participants) {
+        for (const participant of conversation.participants) {
+          if (participant.id !== data.senderId) {
+            const participantSocketId = this.clients.get(participant.id);
 
-        if (notifyUsers.length > 0) {
-          this.logger.log(
-            `Notifying ${notifyUsers.length} users in conversation.`,
-          );
-          for (const user of notifyUsers) {
-            if (user.id !== data.senderId) {
-              this.logger.log(`Sending notification to user ${user.id}`);
-              this.server.to(user.id).emit('unread_message_notification', {
-                conversationId: data.conversationId,
-                lastMessage: messageToSend,
-              });
+            if (participantSocketId) {
+              this.logger.log(
+                `Sending unread message notification to user ${participant.id}`,
+              );
+              this.server
+                .to(participant.id)
+                .emit('unread_message_notification', {
+                  conversationId: data.conversationId,
+                  lastMessage: messageToSend,
+                  senderName:
+                    typeof newMessage.sender === 'object' &&
+                    newMessage.sender !== null
+                      ? (newMessage.sender as { username?: string }).username
+                      : undefined,
+                });
             }
           }
-        } else {
-          this.logger.warn(
-            `No users/participants found for conversation ${data.conversationId}`,
-          );
         }
       }
     } catch (error) {

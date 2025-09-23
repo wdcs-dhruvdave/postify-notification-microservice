@@ -268,7 +268,7 @@ export class ChatService {
           {
             model: User,
             as: 'sender',
-            attributes: ['id', 'username', 'avatar_url'],
+            attributes: ['id', 'username', 'name', 'avatar_url'],
           },
         ],
       });
