@@ -6,8 +6,9 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import * as jwt from 'jsonwebtoken';
+import { CONFIG, MESSAGES } from '../common/constants/constants';
 
-@WebSocketGateway({ cors: { origin: '*' } })
+@WebSocketGateway({ cors: CONFIG.WEBSOCKET.CORS })
 export class NotificationsGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
@@ -18,10 +19,10 @@ export class NotificationsGateway
     try {
       const token = (client.handshake.auth as { token?: string })?.token;
       if (!token) {
-        throw new Error('No token provided');
+        throw new Error(MESSAGES.AUTH.NO_TOKEN_PROVIDED);
       }
       if (!process.env.JWT_SECRET) {
-        throw new Error('JWT_SECRET is not defined');
+        throw new Error(MESSAGES.AUTH.JWT_SECRET_NOT_DEFINED);
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET) as {
@@ -36,7 +37,7 @@ export class NotificationsGateway
         error && typeof error === 'object' && 'message' in error
           ? (error as { message: string }).message
           : String(error);
-      console.error('Invalid WebSocket connection:', errorMessage);
+      console.error(MESSAGES.AUTH.INVALID_TOKEN, errorMessage);
       client.disconnect();
     }
   }

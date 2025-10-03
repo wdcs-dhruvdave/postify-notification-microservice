@@ -13,19 +13,27 @@ import { ConfigService } from '@nestjs/config';
 import { ChatService } from './chat.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { Logger } from '@nestjs/common';
+import {
+  CONFIG,
+  SocketEvent,
+  WebSocketNamespace,
+  MESSAGES,
+} from '../common/constants/constants';
 
 @WebSocketGateway({
-  namespace: 'chat',
-  cors: {
-    origin: '*',
-  },
+  namespace: WebSocketNamespace.CHAT,
+  cors: CONFIG.WEBSOCKET.CORS,
+  pingTimeout: CONFIG.WEBSOCKET.TIMEOUTS.PING_TIMEOUT,
+  pingInterval: CONFIG.WEBSOCKET.TIMEOUTS.PING_INTERVAL,
+  transports: CONFIG.WEBSOCKET.TRANSPORTS,
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(ChatGateway.name);
-  private clients: Map<string, string> = new Map();
+  private clients: Map<string, { socketId: string; conversationId?: string }> =
+    new Map();
 
   constructor(
     private readonly chatService: ChatService,
@@ -33,67 +41,78 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {}
 
   handleConnection(client: Socket) {
+    this.logger.log(`${MESSAGES.LOG.CONNECTION_ATTEMPT} ${client.id}`);
     const token = (client.handshake.auth as { token?: string })?.token;
-    if (token) {
-      try {
-        const jwtSecret = this.configService.get<string>('JWT_SECRET');
-        if (!jwtSecret) {
-          this.logger.error('JWT_SECRET is not defined in configuration.');
-          client.disconnect();
-          return;
-        }
-        const decoded = jwt.verify(token, jwtSecret) as unknown as {
-          id: string;
-        };
 
-        const userId = decoded.id;
-        if (userId) {
-          void client.join(userId);
-          this.clients.set(userId, client.id);
-          this.logger.log(
-            `Client Connected: User ${userId} joined personal room.`,
-          );
-        } else {
-          this.logger.warn(
-            'Token decoded but no user ID found. Disconnecting.',
-          );
-          client.disconnect();
-        }
-      } catch (e) {
-        this.logger.error(
-          'Authentication error, disconnecting client:',
-          e instanceof Error ? e.message : String(e),
-        );
+    if (!token) {
+      this.logger.warn(MESSAGES.AUTH.NO_TOKEN_DISCONNECTING);
+      client.disconnect();
+      return;
+    }
+
+    try {
+      const jwtSecret = this.configService.get<string>('JWT_SECRET');
+      this.logger.log(`${MESSAGES.LOG.JWT_SECRET_DEBUG}${jwtSecret}]`);
+
+      this.logger.log(`${MESSAGES.LOG.JWT_SECRET_EXISTS} ${!!jwtSecret}`);
+      this.logger.log(`${MESSAGES.LOG.FULL_TOKEN_RECEIVED} ${token}`);
+      if (!jwtSecret) {
+        this.logger.error(MESSAGES.AUTH.JWT_SECRET_UNDEFINED_CONFIG);
         client.disconnect();
+        return;
       }
-    } else {
-      this.logger.log('No token provided, disconnecting client.');
+
+      const decoded = jwt.verify(token, jwtSecret) as { id: string };
+      const userId = decoded.id;
+
+      if (!userId) {
+        this.logger.warn(MESSAGES.AUTH.TOKEN_NO_USER_ID);
+        client.disconnect();
+        return;
+      }
+
+      const existingClient = this.clients.get(userId);
+      if (existingClient) {
+        this.logger.log(`User ${userId} ${MESSAGES.LOG.USER_RECONNECTING}`);
+        this.clients.delete(userId);
+      }
+
+      void client.join(userId);
+      this.clients.set(userId, { socketId: client.id });
+      this.logger.log(
+        `${MESSAGES.LOG.CLIENT_CONNECTED} ${userId} ${MESSAGES.LOG.USER_JOINED_ROOM} ${client.id}`,
+      );
+    } catch (e) {
+      this.logger.error(
+        MESSAGES.LOG.AUTHENTICATION_ERROR,
+        e instanceof Error ? e.message : String(e),
+      );
       client.disconnect();
     }
   }
 
   handleDisconnect(client: Socket) {
-    for (const [userId, socketId] of this.clients.entries()) {
-      if (socketId === client.id) {
+    for (const [userId, clientData] of this.clients.entries()) {
+      if (clientData.socketId === client.id) {
         this.clients.delete(userId);
-        this.logger.log(`Client Disconnected: User ${userId}`);
+        this.logger.log(`${MESSAGES.LOG.CLIENT_DISCONNECTED} User ${userId}`);
         break;
       }
     }
   }
 
-  @SubscribeMessage('join_conversation')
+  @SubscribeMessage(SocketEvent.JOIN_CONVERSATION)
   handleJoinRoom(
     @MessageBody() conversationId: string,
     @ConnectedSocket() client: Socket,
   ) {
     void client.join(conversationId);
     this.logger.log(
-      `Socket ${client.id} joined shared conversation room ${conversationId}`,
+      `Socket ${client.id} ${MESSAGES.LOG.SOCKET_JOINED_CONVERSATION} ${conversationId}`,
     );
   }
 
-  @SubscribeMessage('switch_conversation')
+  @SubscribeMessage(SocketEvent.SWITCH_CONVERSATION)
   handleSwitchConversation(
     @MessageBody()
     data: { oldConversationId?: string; newConversationId?: string },
@@ -102,43 +121,45 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (data.oldConversationId) {
       void client.leave(data.oldConversationId);
       this.logger.log(
-        `Socket ${client.id} left conversation room ${data.oldConversationId}`,
+        `Socket ${client.id} ${MESSAGES.LOG.SOCKET_LEFT_CONVERSATION} ${data.oldConversationId}`,
       );
     }
     if (data.newConversationId) {
       void client.join(data.newConversationId);
       this.logger.log(
-        `Socket ${client.id} joined conversation room ${data.newConversationId}`,
+        `Socket ${client.id} ${MESSAGES.LOG.SOCKET_JOINED_NEW_CONVERSATION} ${data.newConversationId}`,
       );
     }
   }
 
-  @SubscribeMessage('leave_conversation')
+  @SubscribeMessage(SocketEvent.LEAVE_CONVERSATION)
   handleLeaveRoom(
     @MessageBody() conversationId: string,
     @ConnectedSocket() client: Socket,
   ) {
     void client.leave(conversationId);
     this.logger.log(
-      `Socket ${client.id} left shared conversation room ${conversationId}`,
+      `Socket ${client.id} ${MESSAGES.LOG.SOCKET_LEFT_SHARED_CONVERSATION} ${conversationId}`,
     );
   }
 
-  @SubscribeMessage('send_message')
+  @SubscribeMessage(SocketEvent.SEND_MESSAGE)
   async handleSendMessage(
     @MessageBody() data: CreateMessageDto & { tempId?: string },
   ) {
-    this.logger.log(`[send_message] Received: ${JSON.stringify(data)}`);
+    this.logger.log(
+      `${MESSAGES.LOG.SEND_MESSAGE_RECEIVED} ${JSON.stringify(data)}`,
+    );
     try {
       this.logger.log(
-        `Server properties: ${Object.keys(this.server).join(', ')}`,
+        `${MESSAGES.LOG.SERVER_PROPERTIES} ${Object.keys(this.server).join(', ')}`,
       );
-      this.logger.log(`Has adapter: ${!!this.server.adapter}`);
-      this.logger.log(`Has sockets: ${!!this.server.sockets}`);
+      this.logger.log(`${MESSAGES.LOG.HAS_ADAPTER} ${!!this.server.adapter}`);
+      this.logger.log(`${MESSAGES.LOG.HAS_SOCKETS} ${!!this.server.sockets}`);
 
       const newMessage = await this.chatService.createMessage(data);
       this.logger.log(
-        `[send_message] Message saved to DB: ${JSON.stringify(newMessage.toJSON())}`,
+        `${MESSAGES.LOG.MESSAGE_SAVED_TO_DB} ${JSON.stringify(newMessage.toJSON())}`,
       );
 
       const conversation =
@@ -152,24 +173,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       };
 
       this.logger.log(
-        `Emitting 'receive_message' to room ${data.conversationId}`,
+        `${MESSAGES.LOG.EMITTING_RECEIVE_MESSAGE} ${data.conversationId}`,
       );
       this.server
         .to(data.conversationId)
-        .emit('receive_message', messageToSend);
+        .emit(SocketEvent.RECEIVE_MESSAGE, messageToSend);
 
       if (conversation && conversation.participants) {
         for (const participant of conversation.participants) {
           if (participant.id !== data.senderId) {
-            const participantSocketId = this.clients.get(participant.id);
+            const participantClient = this.clients.get(participant.id);
 
-            if (participantSocketId) {
+            if (participantClient) {
               this.logger.log(
-                `Sending unread message notification to user ${participant.id}`,
+                `${MESSAGES.LOG.SENDING_UNREAD_NOTIFICATION} ${participant.id}`,
               );
               this.server
                 .to(participant.id)
-                .emit('unread_message_notification', {
+                .emit(SocketEvent.UNREAD_MESSAGE_NOTIFICATION, {
                   conversationId: data.conversationId,
                   lastMessage: messageToSend,
                   senderName:
@@ -184,7 +205,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
     } catch (error) {
       this.logger.error(
-        '[send_message] Error processing message:',
+        MESSAGES.LOG.SEND_MESSAGE_ERROR,
         error instanceof Error ? error.stack : String(error),
       );
     }

@@ -4,6 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Notification } from './entities/notification.entity';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { NotificationsGateway } from './notifications.gateway';
+import { CONFIG, MESSAGES } from '../common/constants/constants';
 
 @Injectable()
 export class NotificationsService {
@@ -33,8 +34,8 @@ export class NotificationsService {
   async findAllForUser(userId: string): Promise<Notification[]> {
     return this.notificationModel
       .find({ recipient: userId })
-      .sort({ createdAt: -1 })
-      .limit(20)
+      .sort({ createdAt: CONFIG.NOTIFICATION.SORT_ORDER as 1 | -1 })
+      .limit(CONFIG.NOTIFICATION.DEFAULT_LIMIT)
       .exec();
   }
 
@@ -43,6 +44,6 @@ export class NotificationsService {
       { recipient: userId, read: false },
       { $set: { read: true } },
     );
-    return { message: 'Notifications marked as read' };
+    return { message: MESSAGES.NOTIFICATION.MARKED_AS_READ };
   }
 }

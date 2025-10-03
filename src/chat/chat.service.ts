@@ -7,10 +7,7 @@ import Message from '../models/message.model';
 import Participant from '../models/participant.model';
 import User from '../models/user.model';
 import { CreateMessageDto } from './dto/create-message.dto';
-// import { TABLE_NAMES, COLUMN_NAMES } from '../../common/constants/db.constant';
-// import { CHAT_ERROR_MESSAGES } from '../../common/constants/messages.constant';
-// import { PAGINATION_DEFAULTS, CHAT_CONFIG } from '../../common/constants/config.constant';
-// import { DEFAULT_VALUES } from '../../common/constants/default.constant';
+import { CONFIG, MESSAGES } from '../common/constants/constants';
 
 export interface ConversationPreview {
   id: string;
@@ -73,7 +70,7 @@ export class ChatService {
             (SELECT p_read.last_read_at 
              FROM participants p_read 
              WHERE p_read.conversation_id = c.id AND p_read.user_id = :userId),
-            '1970-01-01'::TIMESTAMPTZ
+            '${CONFIG.DEFAULT_VALUES.TIMESTAMP_START}'::TIMESTAMPTZ
           )
         )::int AS "unreadCount"
       FROM conversations c
@@ -141,16 +138,14 @@ export class ChatService {
       this.logger.warn(
         `[findOrCreateConversation] Attempted to create a conversation with the same user: ${senderId}`,
       );
-      throw new BadRequestException(
-        'Cannot create a conversation with yourself.',
-      );
+      throw new BadRequestException(MESSAGES.CHAT.CANNOT_CONVERSE_WITH_SELF);
     }
 
     if (!senderId || !receiverId) {
       this.logger.error(
         `[findOrCreateConversation] Invalid IDs provided: senderId=${senderId}, receiverId=${receiverId}`,
       );
-      throw new Error('Both senderId and receiverId must be provided.');
+      throw new Error(MESSAGES.CHAT.SENDER_RECEIVER_IDS_REQUIRED);
     }
 
     const query = `
@@ -277,7 +272,7 @@ export class ChatService {
         this.logger.error(
           `[createMessage] CRITICAL: Message not found after creation and commit. ID: ${newMessage.id}`,
         );
-        throw new Error('Message not found after creation');
+        throw new Error(MESSAGES.CHAT.MESSAGE_NOT_FOUND_AFTER_CREATION);
       }
       this.logger.log(
         `[createMessage] Successfully created and returning message: ${message.id}`,
