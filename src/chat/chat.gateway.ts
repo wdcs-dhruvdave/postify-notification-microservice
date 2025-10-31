@@ -52,10 +52,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     try {
       const jwtSecret = this.configService.get<string>('JWT_SECRET');
-      this.logger.log(`${MESSAGES.LOG.JWT_SECRET_DEBUG}${jwtSecret}]`);
+      // this.logger.log(`${MESSAGES.LOG.JWT_SECRET_DEBUG}${jwtSecret}]`);
 
-      this.logger.log(`${MESSAGES.LOG.JWT_SECRET_EXISTS} ${!!jwtSecret}`);
-      this.logger.log(`${MESSAGES.LOG.FULL_TOKEN_RECEIVED} ${token}`);
+      // this.logger.log(`${MESSAGES.LOG.JWT_SECRET_EXISTS} ${!!jwtSecret}`);
+      // this.logger.log(`${MESSAGES.LOG.FULL_TOKEN_RECEIVED} ${token}`);
       if (!jwtSecret) {
         this.logger.error(MESSAGES.AUTH.JWT_SECRET_UNDEFINED_CONFIG);
         client.disconnect();

@@ -98,6 +98,69 @@ export const CONFIG = {
     DEFAULT_READ_STATUS: false,
   },
 
+  FCM: {
+    WEBPUSH: {
+      ICON: '/favicon.ico',
+      BADGE: '/favicon.ico',
+      REQUIRE_INTERACTION: true,
+    },
+    DEFAULTS: {
+      FALLBACK_URL: '/',
+      TEST_TITLE: 'Test',
+      TEST_BODY: 'Test',
+      TEST_DATA: { test: 'true' },
+    },
+    ERROR_CODES: {
+      INVALID_REGISTRATION_TOKEN: 'messaging/invalid-registration-token',
+      REGISTRATION_TOKEN_NOT_REGISTERED:
+        'messaging/registration-token-not-registered',
+    },
+    NOTIFICATIONS: {
+      TITLES: {
+        LIKE: (username: string) => `${username} liked your post`,
+        DISLIKE: (username: string) => `${username} disliked your post`,
+        COMMENT: (username: string) => `${username} commented on your post`,
+        FOLLOW: (username: string) => `${username} started following you`,
+        DEFAULT: (username: string) => `New notification from ${username}`,
+      },
+      BODIES: {
+        LIKE: (username: string) => `${username} liked your post. Tap to view.`,
+        DISLIKE: (username: string) =>
+          `${username} disliked your post. Tap to view.`,
+        COMMENT: (username: string) =>
+          `${username} left a comment on your post. Tap to view.`,
+        FOLLOW: (username: string) =>
+          `${username} is now following you. Check out their profile!`,
+        DEFAULT: (username: string) =>
+          `You have a new notification from ${username}.`,
+      },
+      URLS: {
+        POST: (postId: string) => `/posts/${postId}`,
+        PROFILE: (userId: string) => `/profile/${userId}`,
+        FEED: '/feed',
+      },
+    },
+  },
+
+  API: {
+    BACKEND: {
+      DEFAULT_URL: 'http://localhost:4000',
+      TIMEOUT: 5000,
+      ENDPOINTS: {
+        USER_BY_ID: (id: string) => `/api/users/id/${id}`,
+        FCM_TOKENS: (userId: string) =>
+          `/api/internal/users/${userId}/fcm-tokens`,
+        FCM_TOKEN_CLEANUP: (userId: string) =>
+          `/api/internal/users/${userId}/fcm-tokens`,
+      },
+      HEADERS: {
+        CONTENT_TYPE: 'application/json',
+        USER_AGENT: 'notification-service',
+        X_SERVICE: 'internal',
+      },
+    },
+  },
+
   CHAT: {
     CONVERSATION_PARTICIPANT_COUNT: 2,
     MESSAGE_QUERY_LIMIT: 1, // For LIMIT 1 in lastMessage subquery
